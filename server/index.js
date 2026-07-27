@@ -9,21 +9,24 @@ const app = express();
 const prisma = new PrismaClient();
 const PORT = 3000;
 
+const cors = require('cors');
+
 app.use(express.json());
+app.use(cors());
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
 app.post('/api/auth/signup', async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, name } = req.body;
   const passwordHash = await bcrypt.hash(password, 10);
 
   const user = await prisma.user.create({
-    data: { email, passwordHash },
+    data: { email, passwordHash, name },
   });
 
-  res.json({ id: user.id, email: user.email });
+  res.json({ id: user.id, email: user.email, name: user.name });
 });
 
 app.post('/api/auth/login', async (req, res) => {
@@ -71,9 +74,6 @@ app.get('/api/groups', authMiddleware, async (req, res) => {
   res.json(groups);
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
 
 // Add a member to a group (by email)
 app.post('/api/groups/:groupId/members', authMiddleware, async (req, res) => {
@@ -199,4 +199,48 @@ app.get('/api/groups/:groupId/settle', authMiddleware, async (req, res) => {
   }
 
   res.json(transactions);
+});
+
+// Get members of a group, with their names
+app.get('/api/groups/:groupId/members', authMiddleware, async (req, res) => {
+  const groupId = parseInt(req.params.groupId);
+
+  const members = await prisma.groupMember.findMany({
+    where: { groupId: groupId },
+    include: { user: true },
+  });
+
+  const result = members.map(m => ({
+    userId: m.user.id,
+    name: m.user.name,
+    email: m.user.email,
+  }));
+
+  res.json(result);
+});
+
+// List expenses for a group
+app.get('/api/groups/:groupId/expenses', authMiddleware, async (req, res) => {
+  const groupId = parseInt(req.params.groupId);
+
+  const expenses = await prisma.expense.findMany({
+    where: { groupId: groupId },
+    include: { paidBy: true },
+    orderBy: { date: 'desc' },
+  });
+
+  const result = expenses.map(e => ({
+    id: e.id,
+    description: e.description,
+    amount: e.amount,
+    category: e.category,
+    date: e.date,
+    paidByName: e.paidBy.name,
+  }));
+
+  res.json(result);
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running on http://localhost:${PORT}`);
 });

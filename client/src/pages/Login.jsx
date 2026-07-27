@@ -3,6 +3,7 @@ import { apiRequest } from '../api/api';
 
 function Login({ onLogin }) {
   const [mode, setMode] = useState('login');
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -20,7 +21,7 @@ function Login({ onLogin }) {
 
     try {
       if (isSignup) {
-        await apiRequest('/api/auth/signup', 'POST', { email, password });
+        await apiRequest('/api/auth/signup', 'POST', { email, password, name });
       }
       const data = await apiRequest('/api/auth/login', 'POST', { email, password });
       onLogin(data.token);
@@ -41,6 +42,17 @@ function Login({ onLogin }) {
             {isSignup ? 'Sign up to start splitting expenses.' : 'Log in to manage your shared expenses.'}
           </p>
           <form onSubmit={handleSubmit}>
+            {isSignup && (
+              <div className="field">
+                <label>Name</label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                />
+              </div>
+            )}
             <div className="field">
               <label>Email</label>
               <input
