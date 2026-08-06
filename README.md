@@ -15,7 +15,7 @@ A full-stack expense-splitting app for roommates and trips. Log shared expenses,
 - Spending-by-category breakdown, visualized as a pie chart
 
 **Drink Log**
-- A separate per-group log for tracking fun drinks (coffee runs, boba, cocktails, etc.)
+- A separate per-group log for tracking fun drinks (coffee runs, matcha, boba, etc.)
 - Rate each drink 1–5 stars and optionally attach a photo (via image URL)
 - Running total of group drink spending
 - A scrollable photo gallery of rated drinks
