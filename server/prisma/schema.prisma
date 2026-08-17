@@ -15,6 +15,7 @@ model User {
   createdAt    DateTime @default(now())
   memberships  GroupMember[]
   expensesPaid Expense[]
+  drinksLogged Drink[]
 }
 
 model Group {
@@ -23,6 +24,7 @@ model Group {
   createdAt DateTime @default(now())
   members   GroupMember[]
   expenses  Expense[]
+  drinks Drink[]
 }
 
 model GroupMember {
@@ -42,6 +44,7 @@ model Expense {
   amount      Float
   description String
   category    String   @default("Other")
+  status      String   @default("paid")
   date        DateTime
   createdAt   DateTime @default(now())
   group       Group    @relation(fields: [groupId], references: [id])
@@ -57,4 +60,17 @@ model ExpenseSplit {
   expense   Expense @relation(fields: [expenseId], references: [id])
 
   @@unique([expenseId, userId])
+}
+
+model Drink {
+  id          Int      @id @default(autoincrement())
+  groupId     Int
+  loggedById  Int
+  name        String
+  cost        Float
+  rating      Int
+  imageUrl    String?
+  date        DateTime @default(now())
+  group       Group    @relation(fields: [groupId], references: [id])
+  loggedBy    User     @relation(fields: [loggedById], references: [id])
 }

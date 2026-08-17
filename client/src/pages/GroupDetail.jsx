@@ -1,16 +1,21 @@
 import { useState, useEffect } from 'react';
 import { apiRequest } from '../api/api';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 
-function GroupDetail({ groupId, groupName, token, onBack }) {
+function GroupDetail({ groupId, groupName, token, onBack, onViewDrinks }) {
   const [members, setMembers] = useState([]);
   const [expenses, setExpenses] = useState([]);
   const [balances, setBalances] = useState({});
   const [settlements, setSettlements] = useState([]);
+  const [categoryData, setCategoryData] = useState([]);
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('Other');
   const [date, setDate] = useState('');
+  const [status, setStatus] = useState('paid');
   const [error, setError] = useState('');
+  const [aiText, setAiText] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
 
   function nameFor(userId) {
     const member = members.find(m => m.userId === parseInt(userId));
@@ -30,6 +35,9 @@ function GroupDetail({ groupId, groupName, token, onBack }) {
 
       const settleData = await apiRequest(`/api/groups/${groupId}/settle`, 'GET', null, token);
       setSettlements(settleData);
+
+      const categoryChartData = await apiRequest(`/api/groups/${groupId}/spending-by-category`, 'GET', null, token);
+      setCategoryData(categoryChartData);
     } catch (err) {
       setError(err.message);
     }
@@ -47,18 +55,60 @@ function GroupDetail({ groupId, groupName, token, onBack }) {
       await apiRequest(
         `/api/groups/${groupId}/expenses`,
         'POST',
-        { description, amount: parseFloat(amount), category, date },
+        { description, amount: parseFloat(amount), category, date, status },
         token
       );
       setDescription('');
       setAmount('');
       setCategory('Other');
       setDate('');
+      setStatus('paid');
       loadData();
     } catch (err) {
       setError(err.message);
     }
   }
+
+  async function handleMarkPaid(expenseId) {
+    setError('');
+    try {
+      await apiRequest(`/api/expenses/${expenseId}/pay`, 'PATCH', null, token);
+      loadData();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function handleDeleteExpense(expenseId) {
+    setError('');
+    try {
+      await apiRequest(`/api/expenses/${expenseId}`, 'DELETE', null, token);
+      loadData();
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function handleParseExpense() {
+    if (!aiText.trim()) return;
+    setError('');
+    setAiLoading(true);
+    try {
+      const parsed = await apiRequest(`/api/groups/${groupId}/parse-expense`, 'POST', { text: aiText }, token);
+      setDescription(parsed.description);
+      setAmount(parsed.amount.toString());
+      setCategory(parsed.category);
+      setDate(parsed.date);
+      setAiText('');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+  const pendingExpenses = expenses.filter(e => e.status === 'pending');
+  const paidExpenses = expenses.filter(e => e.status !== 'pending');
 
   return (
     <div className="page">
@@ -68,11 +118,25 @@ function GroupDetail({ groupId, groupName, token, onBack }) {
         </svg>
         Back to Groups
       </button>
-      <h1>{groupName || 'Group Details'}</h1>
+      <div className="top-bar">
+        <h1>{groupName || 'Group Details'}</h1>
+        <button className="secondary" onClick={onViewDrinks}>Drink Log</button>
+      </div>
       <p className="subtitle">Track expenses and settle up with the group.</p>
 
       <div className="section card">
         <h2>Add an Expense</h2>
+        <div className="field" style={{ display: 'flex', gap: 8 }}>
+          <input
+            type="text"
+            placeholder='Try: "I spent 40 on pizza last night"'
+            value={aiText}
+            onChange={(e) => setAiText(e.target.value)}
+          />
+          <button type="button" className="secondary" onClick={handleParseExpense} disabled={aiLoading}>
+            {aiLoading ? '...' : '✨ Fill with AI'}
+          </button>
+        </div>
         <form onSubmit={handleAddExpense}>
           <div className="field">
             <input
@@ -100,13 +164,17 @@ function GroupDetail({ groupId, groupName, token, onBack }) {
               <option value="Other">Other</option>
             </select>
           </div>
-          <div className="field">
+          <div className="form-row field">
             <input
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
               required
             />
+            <select value={status} onChange={(e) => setStatus(e.target.value)}>
+              <option value="paid">Already paid</option>
+              <option value="pending">Pending (not paid yet)</option>
+            </select>
           </div>
           {error && <p className="error">{error}</p>}
           <button type="submit" className="primary full-width">Add Expense</button>
@@ -114,11 +182,35 @@ function GroupDetail({ groupId, groupName, token, onBack }) {
       </div>
 
       <div className="section card">
+        <h2>Upcoming Bills</h2>
+        {pendingExpenses.length === 0 ? (
+          <div className="empty-state">No pending bills right now.</div>
+        ) : (
+          pendingExpenses.map((exp) => (
+            <div className="row" key={exp.id}>
+              <span className="row-label">
+                <strong>{exp.description}</strong>
+                <span style={{ color: 'var(--ink-faint)', marginLeft: 8 }}>
+                  {exp.category} · {new Date(exp.date).toLocaleDateString()}
+                </span>
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span className="badge">${exp.amount.toFixed(2)}</span>
+                <button className="secondary" onClick={() => handleMarkPaid(exp.id)}>
+                  Mark as Paid
+                </button>
+              </span>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="section card">
         <h2>Expense History</h2>
-        {expenses.length === 0 ? (
+        {paidExpenses.length === 0 ? (
           <div className="empty-state">No expenses logged yet.</div>
         ) : (
-          expenses.map((exp) => (
+          paidExpenses.map((exp) => (
             <div className="row" key={exp.id}>
               <span className="row-label">
                 <strong>{exp.description}</strong>
@@ -126,7 +218,12 @@ function GroupDetail({ groupId, groupName, token, onBack }) {
                   {exp.category} · paid by {exp.paidByName} · {new Date(exp.date).toLocaleDateString()}
                 </span>
               </span>
-              <span className="badge">${exp.amount.toFixed(2)}</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span className="badge">${exp.amount.toFixed(2)}</span>
+                <button className="secondary" onClick={() => handleDeleteExpense(exp.id)}>
+                  Delete
+                </button>
+              </span>
             </div>
           ))
         )}
@@ -134,22 +231,31 @@ function GroupDetail({ groupId, groupName, token, onBack }) {
 
       <div className="section card">
         <h2>Balances</h2>
-        {Object.keys(balances).length === 0 ? (
-          <div className="empty-state">Nobody owes anything yet.</div>
+        {members.length === 0 ? (
+          <div className="empty-state">No members in this group yet.</div>
         ) : (
-          Object.entries(balances).map(([userId, amount]) => (
-            <div className="row" key={userId}>
-              <span className="row-label">
-                <span className="avatar" style={{ width: 30, height: 30, borderRadius: 8, fontSize: 13 }}>
-                  {nameFor(userId).charAt(0).toUpperCase()}
+          members.map((member) => {
+            const bal = balances[member.userId] || 0;
+            const isSettled = Math.abs(bal) < 0.01;
+
+            return (
+              <div className="row" key={member.userId}>
+                <span className="row-label">
+                  <span className="avatar" style={{ width: 30, height: 30, borderRadius: 8, fontSize: 13 }}>
+                    {member.name.charAt(0).toUpperCase()}
+                  </span>
+                  {member.name}
                 </span>
-                {nameFor(userId)}
-              </span>
-              <span className={`pill ${amount >= 0 ? 'pill-owed' : 'pill-owes'}`}>
-                {amount >= 0 ? `is owed $${amount.toFixed(2)}` : `owes $${Math.abs(amount).toFixed(2)}`}
-              </span>
-            </div>
-          ))
+                <span className={`pill ${isSettled ? 'pill-settled' : bal >= 0 ? 'pill-owed' : 'pill-owes'}`}>
+                  {isSettled
+                    ? 'Settled up'
+                    : bal >= 0
+                      ? `is owed $${bal.toFixed(2)}`
+                      : `owes $${Math.abs(bal).toFixed(2)}`}
+                </span>
+              </div>
+            );
+          })
         )}
       </div>
 
@@ -177,6 +283,32 @@ function GroupDetail({ groupId, groupName, token, onBack }) {
               <span className="badge">${s.amount.toFixed(2)}</span>
             </div>
           ))
+        )}
+      </div>
+
+      <div className="section card">
+        <h2>Spending by Category</h2>
+        {categoryData.length === 0 ? (
+          <div className="empty-state">No spending data yet.</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={280}>
+            <PieChart>
+              <Pie
+                data={categoryData}
+                dataKey="total"
+                nameKey="category"
+                cx="50%"
+                cy="50%"
+                outerRadius={90}
+                label={(entry) => `${entry.category}: $${entry.total.toFixed(0)}`}
+              >
+                {categoryData.map((entry, index) => (
+                  <Cell key={index} fill={['#2563eb', '#059669', '#dc2626', '#d97706', '#0891b2'][index % 5]} />
+                ))}
+              </Pie>
+              <Tooltip formatter={(value) => `$${value.toFixed(2)}`} />
+            </PieChart>
+          </ResponsiveContainer>
         )}
       </div>
     </div>

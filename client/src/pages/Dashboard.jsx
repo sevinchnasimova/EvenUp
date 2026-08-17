@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import { apiRequest } from '../api/api';
 import GroupDetail from './GroupDetail';
+import DrinkLog from './DrinkLog';
 
 function Dashboard({ token, onLogout }) {
   const [groups, setGroups] = useState([]);
   const [newGroupName, setNewGroupName] = useState('');
   const [error, setError] = useState('');
   const [selectedGroup, setSelectedGroup] = useState(null);
+  const [viewingDrinks, setViewingDrinks] = useState(false);
 
   async function loadGroups() {
     try {
@@ -34,6 +36,17 @@ function Dashboard({ token, onLogout }) {
     }
   }
 
+if (selectedGroup && viewingDrinks) {
+    return (
+      <DrinkLog
+        groupId={selectedGroup.id}
+        groupName={selectedGroup.name}
+        token={token}
+        onBack={() => setViewingDrinks(false)}
+      />
+    );
+  }
+
   if (selectedGroup) {
     return (
       <GroupDetail
@@ -41,6 +54,7 @@ function Dashboard({ token, onLogout }) {
         groupName={selectedGroup.name}
         token={token}
         onBack={() => setSelectedGroup(null)}
+        onViewDrinks={() => setViewingDrinks(true)}
       />
     );
   }
