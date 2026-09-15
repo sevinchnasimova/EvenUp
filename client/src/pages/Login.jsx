@@ -33,11 +33,13 @@ function Login({ onLogin }) {
   return (
     <div className="login-page">
       <div style={{ width: '100%', maxWidth: 380 }}>
-        <div className="brand" style={{ marginBottom: 32, justifyContent: 'center' }}>
+        <div className="brand auth-brand" style={{ marginBottom: 32, justifyContent: 'center' }}>
           EvenUp
         </div>
         <div className="card">
-          <h1 style={{ textAlign: 'center' }}>{isSignup ? 'Create an account' : 'Welcome back'}</h1>
+          <h1 className="auth-heading" style={{ textAlign: 'center' }}>
+            {isSignup ? 'Create an account' : 'Welcome back'}
+          </h1>
           <p className="subtitle" style={{ textAlign: 'center' }}>
             {isSignup ? 'Sign up to start splitting expenses.' : 'Log in to manage your shared expenses.'}
           </p>
