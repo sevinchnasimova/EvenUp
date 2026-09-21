@@ -1,6 +1,6 @@
 # EvenUp
 
-A full-stack expense-splitting app for roommates and trips. Log shared expenses, track upcoming bills, see who owes who, and get the minimum number of payments needed to settle up — plus a fun side feature for logging and rating drinks with the group.
+A full-stack expense-splitting app for roommates and trips. Log shared expenses, track upcoming bills, see who owes who, and get the minimum number of payments needed to settle up (plus a fun side feature for logging and rating drinks with the group)
 
 ## Features
 
@@ -65,9 +65,3 @@ The frontend runs on `http://localhost:5173` and expects the backend on `http://
 - **Expense** — an expense in a group: amount, category, status (paid/pending), who paid, and its equal splits across members
 - **ExpenseSplit** — how much each member owes for a given expense
 - **Drink** — a logged drink in a group: name, cost, rating, optional image, who logged it
-
-## Roadmap
-
-- Custom (uneven) expense splits, not just equal shares
-- Real-time updates across group members (WebSockets)
-- Deployment
