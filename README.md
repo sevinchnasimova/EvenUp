@@ -8,10 +8,10 @@ A full-stack expense-splitting app for roommates and trips. Log shared expenses,
 - Signup/login with hashed passwords (bcrypt) and JWT-based sessions
 - Create groups (an apartment, a trip, etc.) and add members by email
 - Log shared expenses with category, description, and date — costs split evenly among group members
-- Mark expenses as **pending** (a bill that's due but nobody's paid yet) vs. **paid** — pending bills don't affect balances until someone actually covers them and marks them paid
+- Mark expenses as pending (a bill that's due but nobody's paid yet) vs. paid — pending bills don't affect balances until someone actually covers them and marks them paid
 - Edit and delete expenses
 - See each group member's real name and current balance (owed / owes / settled up)
-- **Settle-up algorithm** — a greedy debt-simplification algorithm that reduces a group's debts to the minimum number of transactions needed to fully settle up, instead of a messy web of small payments between every pair of people
+- Settle-up algorithm — a greedy debt-simplification algorithm that reduces a group's debts to the minimum number of transactions needed to fully settle up, instead of a messy web of small payments between every pair of people
 - Spending-by-category breakdown, visualized as a pie chart
 
 **Drink Log**
