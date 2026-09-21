@@ -26,15 +26,6 @@ A full-stack expense-splitting app for roommates and trips. Log shared expenses,
 **Backend:** Node.js, Express, PostgreSQL, Prisma ORM, JWT, bcrypt
 **Frontend:** React (Vite), Recharts
 
-## How the Settle-Up Algorithm Works
-
-1. Calculate each person's net balance across all *paid* expenses in a group (total they paid minus their fair share of everything)
-2. Split people into two groups: those who owe money (debtors) and those who are owed money (creditors)
-3. Repeatedly match the person who owes the most with the person who's owed the most, and settle the smaller of the two amounts between them
-4. Repeat until everyone's balance reaches zero
-
-This greedy approach minimizes the total number of transactions needed to fully settle a group, rather than naively pairing up every individual expense.
-
 ## Running Locally
 
 ### Backend
