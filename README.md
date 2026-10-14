@@ -14,12 +14,6 @@ A full-stack expense-splitting app for roommates and trips. Log shared expenses,
 - Settle-up algorithm — a greedy debt-simplification algorithm that reduces a group's debts to the minimum number of transactions needed to fully settle up, instead of a messy web of small payments between every pair of people
 - Spending-by-category breakdown, visualized as a pie chart
 
-**Drink Log**
-- A separate per-group log for tracking fun drinks (coffee runs, matcha, boba, etc.)
-- Rate each drink 1–5 stars and optionally attach a photo (via image URL)
-- Running total of group drink spending
-- A scrollable photo gallery of rated drinks
-
 ## Tech Stack
 
 **Languages:** JavaScript, HTML, CSS, SQL
