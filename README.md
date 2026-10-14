@@ -1,6 +1,6 @@
 # EvenUp
 
-A full-stack expense-splitting app for roommates and trips. Log shared expenses, track upcoming bills, see who owes who, and get the minimum number of payments needed to settle up (plus a fun side feature for logging and rating drinks with the group)
+A full-stack expense-splitting app for roommates and trips. Log shared expenses, track upcoming bills, see who owes who, and get the minimum number of payments needed to settle up
 
 ## Features
 
