@@ -14,6 +14,50 @@ const cors = require('cors');
 app.use(express.json());
 app.use(cors());
 
+// Authorization: being logged in isn't enough — the user must also belong to
+// the group whose data they're trying to read or change.
+async function isGroupMember(userId, groupId) {
+  const membership = await prisma.groupMember.findUnique({
+    where: { userId_groupId: { userId, groupId } },
+  });
+  return membership !== null;
+}
+
+// For routes with :groupId in the URL
+async function requireGroupMember(req, res, next) {
+  const groupId = parseInt(req.params.groupId);
+  if (isNaN(groupId)) {
+    return res.status(400).json({ error: 'Invalid group id' });
+  }
+
+  if (!(await isGroupMember(req.userId, groupId))) {
+    return res.status(403).json({ error: 'You are not a member of this group' });
+  }
+
+  next();
+}
+
+// For routes with an expense :id in the URL — look up which group the
+// expense belongs to, then check membership in that group
+async function requireExpenseAccess(req, res, next) {
+  const expenseId = parseInt(req.params.id);
+  if (isNaN(expenseId)) {
+    return res.status(400).json({ error: 'Invalid expense id' });
+  }
+
+  const expense = await prisma.expense.findUnique({ where: { id: expenseId } });
+  if (!expense) {
+    return res.status(404).json({ error: 'Expense not found' });
+  }
+
+  if (!(await isGroupMember(req.userId, expense.groupId))) {
+    return res.status(403).json({ error: 'You are not a member of this group' });
+  }
+
+  req.expense = expense;
+  next();
+}
+
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });
@@ -80,7 +124,7 @@ app.get('/api/groups', authMiddleware, async (req, res) => {
 });
 
 // Add a member to a group (by email)
-app.post('/api/groups/:groupId/members', authMiddleware, async (req, res) => {
+app.post('/api/groups/:groupId/members', authMiddleware, requireGroupMember, async (req, res) => {
   const groupId = parseInt(req.params.groupId);
   const { email } = req.body;
 
@@ -100,7 +144,7 @@ app.post('/api/groups/:groupId/members', authMiddleware, async (req, res) => {
 });
 
 // Get members of a group, with their names
-app.get('/api/groups/:groupId/members', authMiddleware, async (req, res) => {
+app.get('/api/groups/:groupId/members', authMiddleware, requireGroupMember, async (req, res) => {
   const groupId = parseInt(req.params.groupId);
 
   const members = await prisma.groupMember.findMany({
@@ -118,7 +162,7 @@ app.get('/api/groups/:groupId/members', authMiddleware, async (req, res) => {
 });
 
 // Log an expense, split evenly among all group members
-app.post('/api/groups/:groupId/expenses', authMiddleware, async (req, res) => {
+app.post('/api/groups/:groupId/expenses', authMiddleware, requireGroupMember, async (req, res) => {
   const groupId = parseInt(req.params.groupId);
   const { amount, description, category, date, status } = req.body;
 
@@ -151,7 +195,7 @@ app.post('/api/groups/:groupId/expenses', authMiddleware, async (req, res) => {
 });
 
 // List expenses for a group
-app.get('/api/groups/:groupId/expenses', authMiddleware, async (req, res) => {
+app.get('/api/groups/:groupId/expenses', authMiddleware, requireGroupMember, async (req, res) => {
   const groupId = parseInt(req.params.groupId);
 
   const expenses = await prisma.expense.findMany({
@@ -174,7 +218,7 @@ app.get('/api/groups/:groupId/expenses', authMiddleware, async (req, res) => {
 });
 
 // Mark a pending expense as paid
-app.patch('/api/expenses/:id/pay', authMiddleware, async (req, res) => {
+app.patch('/api/expenses/:id/pay', authMiddleware, requireExpenseAccess, async (req, res) => {
   const expenseId = parseInt(req.params.id);
 
   const expense = await prisma.expense.update({
@@ -186,17 +230,9 @@ app.patch('/api/expenses/:id/pay', authMiddleware, async (req, res) => {
 });
 
 // Delete an expense
-app.delete('/api/expenses/:id', authMiddleware, async (req, res) => {
+app.delete('/api/expenses/:id', authMiddleware, requireExpenseAccess, async (req, res) => {
   try {
-    const expenseId = parseInt(req.params.id);
-
-    const expense = await prisma.expense.findUnique({
-      where: { id: expenseId },
-    });
-
-    if (!expense) {
-      return res.status(404).json({ error: 'Expense not found' });
-    }
+    const expenseId = req.expense.id;
 
     await prisma.expenseSplit.deleteMany({
       where: { expenseId: expenseId },
@@ -213,7 +249,7 @@ app.delete('/api/expenses/:id', authMiddleware, async (req, res) => {
   }
 });
 
-app.get('/api/groups/:groupId/balances', authMiddleware, async (req, res) => {
+app.get('/api/groups/:groupId/balances', authMiddleware, requireGroupMember, async (req, res) => {
   const groupId = parseInt(req.params.groupId);
 
   const expenses = await prisma.expense.findMany({
@@ -234,7 +270,7 @@ app.get('/api/groups/:groupId/balances', authMiddleware, async (req, res) => {
   res.json(balances);
 });
 
-app.get('/api/groups/:groupId/settle', authMiddleware, async (req, res) => {
+app.get('/api/groups/:groupId/settle', authMiddleware, requireGroupMember, async (req, res) => {
   const groupId = parseInt(req.params.groupId);
 
   const expenses = await prisma.expense.findMany({
@@ -287,7 +323,7 @@ app.get('/api/groups/:groupId/settle', authMiddleware, async (req, res) => {
 });
 
 // Get spending totals by category for a group
-app.get('/api/groups/:groupId/spending-by-category', authMiddleware, async (req, res) => {
+app.get('/api/groups/:groupId/spending-by-category', authMiddleware, requireGroupMember, async (req, res) => {
   const groupId = parseInt(req.params.groupId);
 
   const expenses = await prisma.expense.findMany({
@@ -308,7 +344,7 @@ app.get('/api/groups/:groupId/spending-by-category', authMiddleware, async (req,
 });
 
 // Log a new drink
-app.post('/api/groups/:groupId/drinks', authMiddleware, async (req, res) => {
+app.post('/api/groups/:groupId/drinks', authMiddleware, requireGroupMember, async (req, res) => {
   try {
     const groupId = parseInt(req.params.groupId);
     const { name, cost, rating, imageUrl } = req.body;
@@ -341,7 +377,7 @@ app.post('/api/groups/:groupId/drinks', authMiddleware, async (req, res) => {
 });
 
 // List all drinks for a group, plus the running total
-app.get('/api/groups/:groupId/drinks', authMiddleware, async (req, res) => {
+app.get('/api/groups/:groupId/drinks', authMiddleware, requireGroupMember, async (req, res) => {
   try {
     const groupId = parseInt(req.params.groupId);
 
@@ -371,7 +407,7 @@ app.get('/api/groups/:groupId/drinks', authMiddleware, async (req, res) => {
 });
 
 // Parse natural language into a structured expense using AI
-app.post('/api/groups/:groupId/parse-expense', authMiddleware, async (req, res) => {
+app.post('/api/groups/:groupId/parse-expense', authMiddleware, requireGroupMember, async (req, res) => {
   try {
     const { text } = req.body;
 
