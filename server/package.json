@@ -4,7 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test:auth": "node authorizationTest.js"
+    "test:auth": "node authorizationTest.js",
+    "test:validation": "node validationTest.js",
+    "test": "node authorizationTest.js && node validationTest.js"
   },
   "keywords": [],
   "author": "",

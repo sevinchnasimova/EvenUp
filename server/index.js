@@ -58,6 +58,20 @@ async function requireExpenseAccess(req, res, next) {
   next();
 }
 
+// Input validation: the frontend checks forms too, but anyone can call the
+// API directly, so the server can't trust what it receives.
+const CATEGORIES = ['Groceries', 'Rent', 'Utilities', 'Trip', 'Other'];
+const STATUSES = ['paid', 'pending'];
+const MAX_AMOUNT = 1000000;
+
+function isNonEmptyString(value, maxLength = 200) {
+  return typeof value === 'string' && value.trim().length > 0 && value.length <= maxLength;
+}
+
+function isValidAmount(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= MAX_AMOUNT;
+}
+
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });
@@ -65,21 +79,41 @@ app.get('/api/health', (req, res) => {
 app.post('/api/auth/signup', async (req, res) => {
   try {
     const { email, password, name } = req.body;
+
+    if (!isNonEmptyString(email) || !email.includes('@')) {
+      return res.status(400).json({ error: 'A valid email is required' });
+    }
+    if (typeof password !== 'string' || password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+    if (!isNonEmptyString(name, 100)) {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+    if (existingUser) {
+      return res.status(409).json({ error: 'An account with that email already exists' });
+    }
+
     const passwordHash = await bcrypt.hash(password, 10);
 
     const user = await prisma.user.create({
-      data: { email, passwordHash, name },
+      data: { email, passwordHash, name: name.trim() },
     });
 
     res.json({ id: user.id, email: user.email, name: user.name });
   } catch (err) {
     console.error(err);
-    res.status(400).json({ error: err.message });
+    res.status(500).json({ error: 'Could not create account' });
   }
 });
 
 app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
+
+  if (typeof email !== 'string' || typeof password !== 'string') {
+    return res.status(400).json({ error: 'Email and password are required' });
+  }
 
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) {
@@ -99,9 +133,13 @@ app.post('/api/auth/login', async (req, res) => {
 app.post('/api/groups', authMiddleware, async (req, res) => {
   const { name } = req.body;
 
+  if (!isNonEmptyString(name, 100)) {
+    return res.status(400).json({ error: 'Group name is required' });
+  }
+
   const group = await prisma.group.create({
     data: {
-      name: name,
+      name: name.trim(),
       members: {
         create: [{ userId: req.userId }],
       },
@@ -128,9 +166,17 @@ app.post('/api/groups/:groupId/members', authMiddleware, requireGroupMember, asy
   const groupId = parseInt(req.params.groupId);
   const { email } = req.body;
 
+  if (!isNonEmptyString(email)) {
+    return res.status(400).json({ error: 'Email is required' });
+  }
+
   const userToAdd = await prisma.user.findUnique({ where: { email } });
   if (!userToAdd) {
     return res.status(404).json({ error: 'No user with that email' });
+  }
+
+  if (await isGroupMember(userToAdd.id, groupId)) {
+    return res.status(409).json({ error: 'That user is already in this group' });
   }
 
   const membership = await prisma.groupMember.create({
@@ -166,6 +212,22 @@ app.post('/api/groups/:groupId/expenses', authMiddleware, requireGroupMember, as
   const groupId = parseInt(req.params.groupId);
   const { amount, description, category, date, status } = req.body;
 
+  if (!isValidAmount(amount)) {
+    return res.status(400).json({ error: `Amount must be a number greater than 0 and at most ${MAX_AMOUNT}` });
+  }
+  if (!isNonEmptyString(description)) {
+    return res.status(400).json({ error: 'Description is required' });
+  }
+  if (category !== undefined && !CATEGORIES.includes(category)) {
+    return res.status(400).json({ error: `Category must be one of: ${CATEGORIES.join(', ')}` });
+  }
+  if (status !== undefined && !STATUSES.includes(status)) {
+    return res.status(400).json({ error: 'Status must be paid or pending' });
+  }
+  if (typeof date !== 'string' || isNaN(new Date(date).getTime())) {
+    return res.status(400).json({ error: 'A valid date is required' });
+  }
+
   const members = await prisma.groupMember.findMany({
     where: { groupId: groupId },
   });
@@ -177,7 +239,7 @@ app.post('/api/groups/:groupId/expenses', authMiddleware, requireGroupMember, as
       groupId: groupId,
       paidById: req.userId,
       amount: amount,
-      description: description,
+      description: description.trim(),
       category: category || 'Other',
       status: status || 'paid',
       date: new Date(date),
@@ -219,7 +281,11 @@ app.get('/api/groups/:groupId/expenses', authMiddleware, requireGroupMember, asy
 
 // Mark a pending expense as paid
 app.patch('/api/expenses/:id/pay', authMiddleware, requireExpenseAccess, async (req, res) => {
-  const expenseId = parseInt(req.params.id);
+  const expenseId = req.expense.id;
+
+  if (req.expense.status === 'paid') {
+    return res.status(409).json({ error: 'This expense has already been paid' });
+  }
 
   const expense = await prisma.expense.update({
     where: { id: expenseId },
@@ -245,7 +311,7 @@ app.delete('/api/expenses/:id', authMiddleware, requireExpenseAccess, async (req
     res.json({ success: true });
   } catch (err) {
     console.error(err);
-    res.status(400).json({ error: err.message });
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 });
 
@@ -349,11 +415,24 @@ app.post('/api/groups/:groupId/drinks', authMiddleware, requireGroupMember, asyn
     const groupId = parseInt(req.params.groupId);
     const { name, cost, rating, imageUrl } = req.body;
 
+    if (!isNonEmptyString(name, 100)) {
+      return res.status(400).json({ error: 'Drink name is required' });
+    }
+    if (!isValidAmount(cost)) {
+      return res.status(400).json({ error: 'Cost must be a number greater than 0' });
+    }
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      return res.status(400).json({ error: 'Rating must be a whole number from 1 to 5' });
+    }
+    if (imageUrl && (typeof imageUrl !== 'string' || !/^https?:\/\//.test(imageUrl))) {
+      return res.status(400).json({ error: 'Image URL must start with http:// or https://' });
+    }
+
     const drink = await prisma.drink.create({
       data: {
         groupId: groupId,
         loggedById: req.userId,
-        name: name,
+        name: name.trim(),
         cost: cost,
         rating: rating,
         imageUrl: imageUrl || null,
@@ -372,7 +451,7 @@ app.post('/api/groups/:groupId/drinks', authMiddleware, requireGroupMember, asyn
     });
   } catch (err) {
     console.error(err);
-    res.status(400).json({ error: err.message });
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 });
 
@@ -402,7 +481,7 @@ app.get('/api/groups/:groupId/drinks', authMiddleware, requireGroupMember, async
     res.json({ drinks: result, total: Math.round(total * 100) / 100 });
   } catch (err) {
     console.error(err);
-    res.status(400).json({ error: err.message });
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 });
 
@@ -410,6 +489,10 @@ app.get('/api/groups/:groupId/drinks', authMiddleware, requireGroupMember, async
 app.post('/api/groups/:groupId/parse-expense', authMiddleware, requireGroupMember, async (req, res) => {
   try {
     const { text } = req.body;
+
+    if (!isNonEmptyString(text, 500)) {
+      return res.status(400).json({ error: 'Please enter a description of the expense (up to 500 characters)' });
+    }
 
     const prompt = `Extract expense details from this sentence and return ONLY valid JSON, no other text, no markdown formatting. The JSON should have these fields: description (string, short), amount (number), category (one of: Groceries, Rent, Utilities, Trip, Other), date (string in YYYY-MM-DD format, use today's date ${new Date().toISOString().split('T')[0]} if not mentioned).
 
@@ -427,17 +510,38 @@ Sentence: "${text}"`;
       }),
     });
 
+    if (!response.ok) {
+      throw new Error(`AI service returned ${response.status}`);
+    }
+
     const data = await response.json();
-    console.log('Groq response:', JSON.stringify(data));
     const rawText = data.choices[0].message.content;
     const cleanedText = rawText.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(cleanedText);
+
+    // The model can return something that's valid JSON but not a usable expense
+    if (!isValidAmount(parsed.amount) || !isNonEmptyString(parsed.description)) {
+      throw new Error('AI response missing amount or description');
+    }
+    if (!CATEGORIES.includes(parsed.category)) {
+      parsed.category = 'Other';
+    }
 
     res.json(parsed);
   } catch (err) {
     console.error(err);
     res.status(400).json({ error: 'Could not parse expense. Try rephrasing.' });
   }
+});
+
+// Catch-all error handler so the client always gets JSON back, never an HTML
+// error page or a stack trace
+app.use((err, req, res, next) => {
+  if (err.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: 'Request body is not valid JSON' });
+  }
+  console.error(err);
+  res.status(500).json({ error: 'Something went wrong. Please try again.' });
 });
 
 app.listen(PORT, () => {
